@@ -1,0 +1,274 @@
+{
+  "name": "vscode-shacl-validator",
+  "displayName": "vscode-shacl-validator",
+  "description": "A VSCode extension for SHACL validation with advanced RDF features.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shacl-playground-activitybar",
+          "title": "SHACL Playground",
+          "icon": "$(list-tree)"
+        }
+      ]
+    },
+    "views": {
+      "shacl-playground-activitybar": [
+        {
+          "id": "shaclPlayground",
+          "name": "Validation Sessions",
+          "type": "tree",
+          "contextualTitle": "SHACL Playground",
+          "icon": "$(checklist)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SHACL Validator",
+      "properties": {
+        "shaclValidator.highlighting.color": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": "rgba(255, 255, 0, 0.3)",
+          "description": "The background color for text highlights. Use a valid CSS color (e.g., '#FFFF00', 'rgba(255,255,0,0.3)'). Set to null to use VS Code's default selection highlight color."
+        },
+        "shaclValidator.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable SHACL shape CodeLens that shows the number of focus nodes and allows highlighting them"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "vscode-shacl-validator.validateActiveDocument",
+        "title": "SHACL: Validate Active Document",
+        "category": "SHACL"
+      },
+      {
+        "command": "vscode-shacl-validator.validateDocument",
+        "title": "SHACL: Validate File...",
+        "category": "SHACL",
+        "enablement": "explorerResourceIsFolder == false"
+      },
+      {
+        "command": "vscode-shacl-validator.highlightSelection",
+        "title": "Highlight: Highlight Current Selection",
+        "category": "Highlight"
+      },
+      {
+        "command": "vscode-shacl-validator.clearHighlights",
+        "title": "Highlight: Clear All Highlights",
+        "category": "Highlight"
+      },
+      {
+        "command": "vscode-shacl-validator.createSession",
+        "title": "SHACL: Create New Validation Session",
+        "category": "SHACL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "vscode-shacl-validator.runSessionValidation",
+        "title": "SHACL: Run Validation",
+        "category": "SHACL",
+        "icon": "$(play)"
+      },
+      {
+        "command": "vscode-shacl-validator.viewSessionReport",
+        "title": "SHACL: View Last Report",
+        "category": "SHACL",
+        "icon": "$(notebook-execute)"
+      },
+      {
+        "command": "vscode-shacl-validator.deleteSession",
+        "title": "SHACL: Delete Session",
+        "category": "SHACL",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "vscode-shacl-validator.renameSession",
+        "title": "SHACL: Rename Session",
+        "category": "SHACL",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "vscode-shacl-validator.openSessionFile",
+        "title": "SHACL: Open File",
+        "category": "SHACL",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "vscode-shacl-validator.refreshSessions",
+        "title": "SHACL: Refresh Sessions",
+        "category": "SHACL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vscode-shacl-validator.highlightFocusNodes",
+        "title": "SHACL: Highlight Focus Nodes",
+        "category": "SHACL"
+      },
+      {
+        "command": "vscode-shacl-validator.selectDataDocumentForFocusNodes",
+        "title": "SHACL: Select Data Document for Focus Nodes",
+        "category": "SHACL"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "vscode-shacl-validator.runSessionValidation",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession",
+          "group": "inline"
+        },
+        {
+          "command": "vscode-shacl-validator.runSessionValidation",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "vscode-shacl-validator.viewSessionReport",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession.viewReport || view == shaclPlayground && viewItem == shaclValidationSession",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "vscode-shacl-validator.openSessionFile",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession.dataGraph || view == shaclPlayground && viewItem == shaclValidationSession.shapesGraph",
+          "group": "inline"
+        },
+        {
+          "command": "vscode-shacl-validator.renameSession",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession",
+          "group": "2_modification@1"
+        },
+        {
+          "command": "vscode-shacl-validator.deleteSession",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession",
+          "group": "2_modification@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vscode-shacl-validator.createSession",
+          "when": "view == shaclPlayground",
+          "group": "navigation"
+        },
+        {
+          "command": "vscode-shacl-validator.refreshSessions",
+          "when": "view == shaclPlayground",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "when": "resourceLangId == 'turtle' || resourceLangId == 'jsonld' || resourceLangId == 'rdf' || resourceLangId == 'n3' || resourceLangId == 'nt'",
+          "command": "vscode-shacl-validator.validateActiveDocument",
+          "group": "validation@1"
+        },
+        {
+          "command": "vscode-shacl-validator.highlightSelection",
+          "group": "2_editing@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "vscode-shacl-validator.clearHighlights",
+          "group": "2_editing@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "when": "resourceLangId == 'turtle' || resourceLangId == 'jsonld' || resourceLangId == 'rdf' || resourceLangId == 'n3' || resourceLangId == 'nt'",
+          "command": "vscode-shacl-validator.validateDocument",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "vscode-shacl-validator.validateActiveDocument",
+          "when": "editorLangId == 'turtle' || editorLangId == 'jsonld' || editorLangId == 'rdf' || editorLangId == 'n3' || editorLangId == 'nt'"
+        }
+      ]
+    },
+    "codelens": {
+      "turtle": {
+        "controls": {
+          "enable": true
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "turtle",
+        "aliases": [
+          "Turtle",
+          "ttl"
+        ],
+        "extensions": [
+          ".ttl",
+          ".shacl",
+          ".shc"
+        ],
+        "mimetypes": [
+          "text/turtle"
+        ]
+      },
+      {
+        "id": "jsonld",
+        "aliases": [
+          "JSON-LD",
+          "jsonld"
+        ],
+        "extensions": [
+          ".jsonld"
+        ],
+        "mimetypes": [
+          "application/ld+json"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "dependencies": {
+    "n3": "^1.17.0",
+    "rdf-validate-shacl": "^0.4.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/n3": "^1.24.2",
+    "@types/node": "20.x",
+    "@types/rdf-validate-shacl": "^0.4.9",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.28.0",
+    "@typescript-eslint/parser": "^8.28.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "esbuild": "^0.25.1",
+    "eslint": "^9.23.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.2"
+  }
+}

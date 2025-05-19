@@ -1,0 +1,68 @@
+/* media/webview.css */
+body {
+  font-family: var(--vscode-font-family, Arial, sans-serif);
+  color: var(--vscode-editor-foreground);
+  background-color: var(--vscode-editor-background);
+  padding: 10px 20px;
+}
+
+h1 {
+  color: var(--vscode-textLink-foreground);
+  border-bottom: 1px solid var(--vscode-editorWidget-border);
+  padding-bottom: 5px;
+}
+
+#summary p {
+    margin: 5px 0;
+    font-size: 0.9em;
+}
+#summary p span {
+    font-weight: bold;
+    color: var(--vscode-textLink-activeForeground);
+}
+
+
+#resultsTableContainer {
+  margin-top: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px;
+  border: 1px solid var(--vscode-editorWidget-border);
+  font-size: 0.9em;
+  word-wrap: break-word; /* Help long IRIs wrap */
+  max-width: 300px; /* Prevent extremely wide columns */
+}
+
+th {
+  background-color: var(--vscode-editorHoverWidget-background);
+  color: var(--vscode-editorHoverWidget-foreground);
+}
+
+tbody tr:nth-child(even) {
+  background-color: var(--vscode-editor-selectionBackground); /* Subtle striping */
+}
+tbody tr:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground);
+}
+
+.jump-link {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.jump-link:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+#noViolationsMsg {
+    color: var(--vscode-editorInfo-foreground);
+    font-style: italic;
+    margin-top: 15px;
+}
