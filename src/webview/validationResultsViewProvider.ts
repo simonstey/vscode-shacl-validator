@@ -1,8 +1,8 @@
 // src/webview/validationResultsViewProvider.ts
-import * as vscode from 'vscode';
-import { HighlightingService } from '../highlighting/highlightingService';
-import { RdfDocumentManager } from '../rdf/rdfDocumentManager';
-import { Term } from 'n3'; // Assuming Term is exported from n3 or @rdfjs/types
+import * as vscode from "vscode";
+import { HighlightingService } from "../highlighting/highlightingService";
+import { RdfDocumentManager } from "../rdf/rdfDocumentManager";
+import { Term } from "n3"; // Assuming Term is exported from n3 or @rdfjs/types
 
 // Define the structure of the validation report data for the webview
 export interface WebviewValidationReport {
@@ -10,6 +10,7 @@ export interface WebviewValidationReport {
     results: WebviewValidationResult[];
     dataDocumentUri: string;
     shapesDocumentUri: string;
+    rawReportTurtle?: string; // Added for raw report
 }
 
 export interface WebviewValidationResult {
@@ -19,17 +20,23 @@ export interface WebviewValidationResult {
     severity?: { value: string; termType: string };
     sourceConstraintComponent?: { value: string; termType: string };
     sourceShape?: { value: string; termType: string };
-    value?: { value: string; termType: string; language?: string; datatype?: { value: string; termType: string } };
+    value?: {
+        value: string;
+        termType: string;
+        language?: string;
+        datatype?: { value: string; termType: string };
+    };
 }
 
 export class ValidationResultsViewProvider implements vscode.Disposable {
-    public static readonly viewType = 'shaclValidationResults';
+    public static readonly viewType = "shaclValidationResults";
     private _panel: vscode.WebviewPanel | undefined;
     private readonly _extensionUri: vscode.Uri;
     private _disposables: vscode.Disposable[] = [];
 
     private _highlightingService: HighlightingService;
     private _rdfDocumentManager: RdfDocumentManager; // To help find terms
+    private _rawReportTurtle?: string; // Store the raw report
 
     constructor(
         extensionUri: vscode.Uri,
@@ -39,20 +46,23 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
         this._extensionUri = extensionUri;
         this._highlightingService = highlightingService;
         this._rdfDocumentManager = rdfDocumentManager;
-    } public showResults(report: WebviewValidationReport) {
+    }
+    public showResults(report: WebviewValidationReport) {
         // Always show results in column three for side-by-side view
         const column = vscode.ViewColumn.Three;
+
+        this._rawReportTurtle = report.rawReportTurtle; // Store the raw report
 
         if (this._panel) {
             this._panel.reveal(column);
         } else {
             this._panel = vscode.window.createWebviewPanel(
                 ValidationResultsViewProvider.viewType,
-                'SHACL Validation Results',
+                "SHACL Validation Results",
                 column,
                 {
                     enableScripts: true,
-                    localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'media')],
+                    localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "media")],
                     retainContextWhenHidden: true,
                 }
             );
@@ -61,15 +71,27 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
             this._panel.webview.onDidReceiveMessage(
                 async (message) => {
                     switch (message.command) {
-                        case 'jumpToLocation':
-                            await this.handleJumpToLocation(
-                                message.targetUri,
-                                message.termString,
-                                message.termType
-                            );
+                        case "jumpToLocation":
+                            await this.handleJumpToLocation(message.targetUri, message.termString, message.termType);
                             return;
-                        case 'alert':
+                        case "alert":
                             vscode.window.showInformationMessage(message.text);
+                            return;
+                        case "showRawReport": // New message handler
+                            if (this._rawReportTurtle) {
+                                try {
+                                    const doc = await vscode.workspace.openTextDocument({
+                                        content: this._rawReportTurtle,
+                                        language: "turtle",
+                                    });
+                                    await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+                                } catch (e: any) {
+                                    vscode.window.showErrorMessage(`Error showing raw report: ${e.message}`);
+                                    console.error("Error opening raw report document:", e);
+                                }
+                            } else {
+                                vscode.window.showInformationMessage("No raw report available to show.");
+                            }
                             return;
                     }
                 },
@@ -79,7 +101,10 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
         }
 
         this._panel.webview.html = this._getHtmlForWebview(this._panel.webview, report);
-        this._panel.webview.postMessage({ command: 'showReport', report: report });
+        this._panel.webview.postMessage({
+            command: "showReport",
+            report: report,
+        });
     }
 
     private async handleJumpToLocation(targetUriString: string, termString: string, termType: string) {
@@ -89,84 +114,133 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
         }
         try {
             const targetUri = vscode.Uri.parse(targetUriString);
-            const document = await vscode.workspace.openTextDocument(targetUri);
-            const editor = await vscode.window.showTextDocument(document, { preview: false, viewColumn: vscode.ViewColumn.One });
+            let editor: vscode.TextEditor;
 
-            // Simple string search for the term.
-            // This is a basic implementation. More advanced would involve AST/CST parsing.
-            const text = document.getText();
-            let searchTerm = termString;
+            // Check if the document is already visible in an editor
+            const visibleEditor = vscode.window.visibleTextEditors.find(
+                (e) => e.document.uri.toString() === targetUri.toString()
+            );
 
-            // Adjust search term based on type for better matching (heuristic)
-            if (termType === 'NamedNode' && !termString.startsWith('<')) {
-                searchTerm = `<${termString}>`; // e.g. http://... becomes <http://...>
-            } else if (termType === 'Literal' && !termString.startsWith('"')) {
-                // Heuristic: if it's a literal without quotes, it might be just the value part
-                // This part is tricky because the termString from SHACL report might be just the lexical form
+            if (visibleEditor) {
+                // Document is already visible. Ensure it's the active editor in its group.
+                editor = await vscode.window.showTextDocument(visibleEditor.document, {
+                    viewColumn: visibleEditor.viewColumn, // Preserve its current column
+                    preview: false,
+                    preserveFocus: false, // Allow focus to move to the editor
+                });
+            } else {
+                // Document is not visible. Open it (or reveal if open but not visible) in ViewColumn.One.
+                const documentToOpen = await vscode.workspace.openTextDocument(targetUri);
+                editor = await vscode.window.showTextDocument(documentToOpen, {
+                    preview: false,
+                    viewColumn: vscode.ViewColumn.One, // Default to ViewColumn.One
+                    preserveFocus: false,
+                });
             }
 
+            const document = editor.document; // Get document from the resolved editor
+            const text = document.getText();
 
-            let matchIndex = -1;
-            let retries = 0;
-            const maxRetries = 2; // Try original, then potentially modified searchTerm
+            const rdfContext = this._rdfDocumentManager.getDocumentContext(targetUri);
+            const prefixes = rdfContext?.prefixes || {};
 
-            while (matchIndex === -1 && retries <= maxRetries) {
-                if (retries === 1 && termType === 'NamedNode' && termString.startsWith('<') && termString.endsWith('>')) {
-                    // If it was already <...>, try without <>
-                    searchTerm = termString.substring(1, termString.length - 1);
-                } else if (retries === 2 && termType === 'NamedNode' && !termString.startsWith('<')) {
-                    // If original didn't have <>, try with < > if not already tried
-                    searchTerm = `<${termString}>`;
-                } else if (retries > 0 && termType !== 'NamedNode') {
-                    break; // Only retry for NamedNodes with this logic for now
-                }
+            const searchPatterns: string[] = [];
 
+            // 1. Original term string
+            searchPatterns.push(termString);
 
-                matchIndex = text.indexOf(searchTerm);
-                if (matchIndex === -1 && searchTerm.includes(':') && !searchTerm.startsWith('<')) {
-                    // Try finding prefixed names (e.g., ex:Class) if full IRI search failed
-                    // This is also a heuristic
-                    const parts = searchTerm.split(':');
-                    if (parts.length === 2) {
-                        // Try finding the local name part only
-                        matchIndex = text.indexOf(parts[1]);
+            // 2. Term as full IRI (if it's a NamedNode and not already wrapped)
+            if (termType === "NamedNode" && !termString.startsWith("<") && !termString.endsWith(">")) {
+                searchPatterns.push(`<${termString}>`);
+            }
+            // 3. Term without < > (if it was wrapped)
+            if (termType === "NamedNode" && termString.startsWith("<") && termString.endsWith(">")) {
+                searchPatterns.push(termString.substring(1, termString.length - 1));
+            }
+
+            // 4. Prefixed names
+            if (termType === "NamedNode") {
+                for (const [prefix, uri] of Object.entries(prefixes)) {
+                    if (termString.startsWith(uri as string)) {
+                        searchPatterns.push(`${prefix}:${termString.substring((uri as string).length)}`);
                     }
                 }
-                retries++;
             }
 
+            // 5. Local name (if IRI)
+            if (termType === "NamedNode") {
+                let localName = "";
+                if (termString.includes("#")) {
+                    localName = termString.substring(termString.lastIndexOf("#") + 1);
+                } else if (termString.includes("/")) {
+                    localName = termString.substring(termString.lastIndexOf("/") + 1);
+                }
+                // Ensure localName is not an empty string and not already added (e.g. if termString was already just the localName)
+                if (localName && localName !== termString && !localName.startsWith("<") && !localName.endsWith(">")) {
+                    searchPatterns.push(localName);
+                }
+            }
 
-            if (matchIndex !== -1) {
-                const startPos = document.positionAt(matchIndex);
-                const endPos = document.positionAt(matchIndex + searchTerm.length);
-                const range = new vscode.Range(startPos, endPos);
+            // Remove duplicates and empty strings, and ensure patterns are valid
+            const uniqueSearchPatterns = [...new Set(searchPatterns)].filter((p) => p && p.trim() !== "");
 
-                editor.selection = new vscode.Selection(range.start, range.end);
-                editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-                this._highlightingService.clearHighlights(editor); // Clear previous before applying new
-                this._highlightingService.highlightRange(editor, range);
+            let bestMatch: { range: vscode.Range; pattern: string } | undefined;
 
-                // Set a timeout to clear the highlight after a few seconds
+            for (const pattern of uniqueSearchPatterns) {
+                try {
+                    let escapedPattern = pattern.replace(/[-\[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+                    if (pattern.startsWith("<") && pattern.endsWith(">")) {
+                        const inner = pattern.substring(1, pattern.length - 1);
+                        escapedPattern = `<${inner.replace(/[-\[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}>`;
+                    } else {
+                        escapedPattern = pattern.replace(/[-\[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+                    }
+
+                    const regex = new RegExp(`(?<=^|\\s|[("'<])${escapedPattern}(?=$|\\s|[)"'>.,;])`, "gm");
+                    let match;
+                    while ((match = regex.exec(text)) !== null) {
+                        const startPos = document.positionAt(match.index);
+                        const endPos = document.positionAt(match.index + match[0].length);
+                        const range = new vscode.Range(startPos, endPos);
+
+                        if (!bestMatch || pattern === termString || pattern === `<${termString}>`) {
+                            bestMatch = { range, pattern };
+                            if (pattern === termString || pattern === `<${termString}>`) {
+                                break; // Exact match found, prioritize
+                            }
+                        }
+                    }
+                    if (bestMatch && (bestMatch.pattern === termString || bestMatch.pattern === `<${termString}>`)) {
+                        break;
+                    }
+                } catch (regexError) {
+                    console.error(`Error with regex for pattern '${pattern}':`, regexError);
+                }
+            }
+
+            if (bestMatch) {
+                editor.selection = new vscode.Selection(bestMatch.range.start, bestMatch.range.end);
+                editor.revealRange(bestMatch.range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+                this._highlightingService.clearHighlights(editor);
+                this._highlightingService.highlightRange(editor, bestMatch.range);
+
                 setTimeout(() => {
-                    // Check if the editor is still visible and the decoration is still active for this range
                     if (vscode.window.visibleTextEditors.includes(editor)) {
-                        // This direct clear might be too aggressive if user triggered other highlights.
-                        // A more robust way would be to track specific jump highlights.
-                        // For now, let's just clear all from this editor for simplicity of the example.
                         this._highlightingService.clearHighlights(editor);
                     }
-                }, 5000); // Highlight for 5 seconds
-
+                }, 5000);
             } else {
-                vscode.window.showWarningMessage(`Could not find '${termString}' in ${targetUri.fsPath}.`);
+                vscode.window.showWarningMessage(
+                    `Could not find '${termString}' in ${targetUri.fsPath}. Tried patterns: ${uniqueSearchPatterns.join(
+                        ", "
+                    )}`
+                );
             }
-
         } catch (e: any) {
             vscode.window.showErrorMessage(`Error jumping to location: ${e.message}`);
             console.error(e);
         }
     }
-
 
     private disposePanel() {
         this._panel = undefined;
@@ -185,9 +259,16 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, report?: WebviewValidationReport): string {
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview.js'));
-        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'webview.css'));
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "webview.js"));
+        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "webview.css"));
         const nonce = getNonce(); // Security practice
+
+        // Determine if the raw report button should be potentially visible
+        // The actual display:none will be handled by webview.js based on content
+        const rawReportButtonHtml = `
+            <button id="showRawReportBtn" style="display:none; margin-top: 10px; padding: 8px 12px; cursor: pointer; border: 1px solid var(--vscode-button-border, #ccc); background-color: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #fff); border-radius: 4px;">
+                View Raw Report (Turtle)
+            </button>`;
 
         return `<!DOCTYPE html>
       <html lang="en">
@@ -204,6 +285,7 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
             <p>Conforms: <span id="conformsStatus"></span></p>
             <p>Data File: <span id="dataFile"></span></p>
             <p>Shapes File: <span id="shapesFile"></span></p>
+            ${rawReportButtonHtml}
         </div>
         
         <div id="resultsTableContainer">
@@ -234,8 +316,8 @@ export class ValidationResultsViewProvider implements vscode.Disposable {
 }
 
 function getNonce() {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let text = "";
+    const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     for (let i = 0; i < 32; i++) {
         text += possible.charAt(Math.floor(Math.random() * possible.length));
     }

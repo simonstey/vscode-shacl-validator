@@ -7,11 +7,16 @@ import type { DatasetCoreFactory } from "@rdfjs/types/dataset";
 import * as fs from "fs";
 import * as path from "path";
 import * as N3 from "n3";
-import { ValidationResultsViewProvider, WebviewValidationReport, WebviewValidationResult } from "../webview/validationResultsViewProvider";
+import {
+    ValidationResultsViewProvider,
+    WebviewValidationReport,
+    WebviewValidationResult,
+} from "../webview/validationResultsViewProvider";
 import { RdfDocumentManager } from "../rdf/rdfDocumentManager";
 const { literal, defaultGraph } = DataFactory; // namedNode is not used directly here, DataFactory has it
-import { SessionManagerService } from '../sessions/sessionManagerService'; // Import
-
+import { SessionManagerService } from "../sessions/sessionManagerService"; // Import
+const SH = "http://www.w3.org/ns/shacl#";
+const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 // async function loadRdfFileAsDataset(filePath: string) {
 //     const fileContent = await fs.promises.readFile(filePath, "utf-8");
 
@@ -61,21 +66,23 @@ import { SessionManagerService } from '../sessions/sessionManagerService'; // Im
 //     });
 // }
 
-
-// Helper to convert N3.Term to a simpler structure for the webview
-function convertTermForWebview(term: Term | null | undefined): { value: string; termType: string; language?: string; datatype?: { value: string; termType: string } } | undefined {
-    if (!term) { return undefined; };
-    const base = { value: term.value, termType: term.termType };
-    if (term.termType === 'Literal') {
-        return {
-            ...base,
-            language: term.language || undefined,
-            datatype: term.datatype ? { value: term.datatype.value, termType: term.datatype.termType } : undefined
-        };
-    }
-    return base;
-}
-
+// // Helper to convert N3.Term to a simpler structure for the webview
+// function convertTermForWebview(
+//     term: Term | null | undefined
+// ): { value: string; termType: string; language?: string; datatype?: { value: string; termType: string } } | undefined {
+//     if (!term) {
+//         return undefined;
+//     }
+//     const base = { value: term.value, termType: term.termType };
+//     if (term.termType === "Literal") {
+//         return {
+//             ...base,
+//             language: term.language || undefined,
+//             datatype: term.datatype ? { value: term.datatype.value, termType: term.datatype.termType } : undefined,
+//         };
+//     }
+//     return base;
+// }
 
 export class ShaclValidationService {
     private outputChannel: vscode.OutputChannel;
@@ -105,7 +112,6 @@ export class ShaclValidationService {
         await this.validateDocument(editor.document.uri);
     }
 
-
     public async validateDocument(
         dataDocumentUri: vscode.Uri,
         shapesGraphUriToUse?: vscode.Uri, // Optional, used by session runner
@@ -114,13 +120,12 @@ export class ShaclValidationService {
         // ... (existing setup and output channel logging)
         this.outputChannel.clear();
         this.outputChannel.show(true);
-        this.outputChannel.appendLine(
-            `Starting SHACL validation for: ${dataDocumentUri.fsPath}`
-        );
+        this.outputChannel.appendLine(`Starting SHACL validation for: ${dataDocumentUri.fsPath}`);
 
-        let shapesFileUri: vscode.Uri | undefined = shapesGraphUriToUse;// Keep track of shapes file URI
+        let shapesFileUri: vscode.Uri | undefined = shapesGraphUriToUse; // Keep track of shapes file URI
 
-        try {            // Open data document in column one, checking if it's already open
+        try {
+            // Open data document in column one, checking if it's already open
             let dataEditor: vscode.TextEditor | undefined;
 
             for (const editor of vscode.window.visibleTextEditors) {
@@ -143,21 +148,26 @@ export class ShaclValidationService {
                 // ... error handling ...
                 const errorReport: WebviewValidationReport = {
                     conforms: false,
-                    results: dataContext?.diagnostics.filter(d => d.isParserError).map(d => ({
-                        message: [d.message],
-                        severity: { value: 'Error (Parser)', termType: 'Literal' },
-                        focusNode: { value: `Line ${d.range.start.line + 1}`, termType: 'Literal' }, // Simplistic focus node for parser errors
-                    })) || [{ message: ["Could not parse data document."] }],
+                    results: dataContext?.diagnostics
+                        .filter((d) => d.isParserError)
+                        .map((d) => ({
+                            message: [d.message],
+                            severity: { value: "Error (Parser)", termType: "Literal" },
+                            focusNode: { value: `Line ${d.range.start.line + 1}`, termType: "Literal" }, // Simplistic focus node for parser errors
+                        })) || [{ message: ["Could not parse data document."] }],
                     dataDocumentUri: dataDocumentUri.toString(),
-                    shapesDocumentUri: shapesFileUri !== undefined ? shapesFileUri.toString() : "" // Could be undefined if not chosen yet
+                    shapesDocumentUri: shapesFileUri !== undefined ? shapesFileUri.toString() : "", // Could be undefined if not chosen yet
                 };
                 this.validationResultsViewProvider.showResults(errorReport);
-                if (sessionId && shapesFileUri) { // Check shapesFileUri is defined
+                if (sessionId && shapesFileUri) {
+                    // Check shapesFileUri is defined
                     this.sessionManagerService.updateSessionReport(sessionId, errorReport);
                 }
                 return;
             }
-            const dataGraph = dataContext.store; if (!shapesFileUri) { // If not provided by session, prompt
+            const dataGraph = dataContext.store;
+            if (!shapesFileUri) {
+                // If not provided by session, prompt
                 shapesFileUri = await this.promptForShapesFile(dataDocumentUri);
                 if (!shapesFileUri) {
                     this.outputChannel.appendLine("SHACL validation cancelled: No shapes file selected.");
@@ -192,13 +202,15 @@ export class ShaclValidationService {
                 // ... error handling ...
                 const errorReport: WebviewValidationReport = {
                     conforms: false,
-                    results: shapesContext?.diagnostics.filter(d => d.isParserError).map(d => ({
-                        message: [d.message],
-                        severity: { value: 'Error (Parser)', termType: 'Literal' },
-                        focusNode: { value: `Line ${d.range.start.line + 1}`, termType: 'Literal' },
-                    })) || [{ message: ["Could not parse shapes document."] }],
+                    results: shapesContext?.diagnostics
+                        .filter((d) => d.isParserError)
+                        .map((d) => ({
+                            message: [d.message],
+                            severity: { value: "Error (Parser)", termType: "Literal" },
+                            focusNode: { value: `Line ${d.range.start.line + 1}`, termType: "Literal" },
+                        })) || [{ message: ["Could not parse shapes document."] }],
                     dataDocumentUri: dataDocumentUri.toString(),
-                    shapesDocumentUri: shapesFileUri.toString()
+                    shapesDocumentUri: shapesFileUri.toString(),
                 };
                 this.validationResultsViewProvider.showResults(errorReport);
                 if (sessionId) {
@@ -208,34 +220,132 @@ export class ShaclValidationService {
             }
             const shapesGraph = shapesContext.store;
 
-
             this.outputChannel.appendLine("Initializing SHACL validator...");
             const validator = new SHACLValidator(shapesGraph, {});
             this.outputChannel.appendLine("Performing validation...");
             const report = await validator.validate(dataGraph);
 
+            // Serialize the report to Turtle for the raw view
+            let rawReportTurtle = "";
+            try {
+                const reportDataset = report.dataset; // Assuming report.dataset is the rdfjs Dataset
+
+                // Collect prefixes from dataGraph and shapesGraph
+                const prefixes: { [key: string]: string } = {
+                    sh: SH, // Default SHACL prefix
+                    rdf: RDF, // Default RDF prefix
+                };
+
+                if (dataContext && dataContext.prefixes) {
+                    for (const [key, value] of Object.entries(dataContext.prefixes)) {
+                        // Assuming value is a NamedNode or string based on typical N3.js prefix structure
+                        prefixes[key] = typeof value === "string" ? value : (value as NamedNode).value;
+                    }
+                }
+                if (shapesContext && shapesContext.prefixes) {
+                    for (const [key, value] of Object.entries(shapesContext.prefixes)) {
+                        if (!prefixes[key]) {
+                            // Avoid overwriting if already set (e.g. from dataGraph)
+                            // Assuming value is a NamedNode or string
+                            prefixes[key] = typeof value === "string" ? value : (value as NamedNode).value;
+                        }
+                    }
+                }
+
+                const writer = new N3.Writer({ format: "ttl", prefixes });
+                const inlinedBlankNodeSubjects = new Set<string>(); // Tracks BNs whose properties are now part of a writer.blank() object structure
+
+                for (const quad of reportDataset) {
+                    let { subject, predicate, object, graph } = quad; // Use destructured, mutable versions for this scope
+                    let addThisQuad = true;
+
+                    // If current quad's subject is a BN whose properties have already been inlined into an object, skip this quad.
+                    if (subject.termType === "BlankNode" && inlinedBlankNodeSubjects.has(subject.value)) {
+                        addThisQuad = false;
+                    }
+
+                    // If current quad's object is a BN, try to inline its properties.
+                    if (addThisQuad && object.termType === "BlankNode") {
+                        const bnObject = object;
+                        // Heuristic: Only attempt to inline if this blank node appears as an object
+                        // in exactly one quad within its graph (i.e., the current quad).
+                        // This simplifies avoiding issues with BNs referenced as objects multiple times.
+                        const bnObjectAppearancesAsObject = Array.from(
+                            reportDataset.match(null, null, bnObject, graph)
+                        );
+
+                        if (bnObjectAppearancesAsObject.length === 1) {
+                            const properties = Array.from(reportDataset.match(bnObject, null, null, graph)).map(
+                                (q) => ({ predicate: q.predicate, object: q.object })
+                            );
+
+                            if (properties.length > 0) {
+                                // Further heuristic: ensure this BN isn't also a subject of other quads
+                                // not captured in `properties` which might indicate more complex usage.
+                                // For now, we proceed if properties are found.
+                                object = writer.blank(properties); // Replace object with the blank node structure
+                                inlinedBlankNodeSubjects.add(bnObject.value); // Mark this BN's properties as handled
+                            }
+                        }
+                    }
+
+                    // if (quad.subject.termType === "BlankNode") {
+                    //     // If we are processing a quad where the subject is a blank node,
+                    //     // and it wasn't skipped (meaning its properties weren't inlined as part of an object),
+                    //     // N3.Writer will handle its serialization.
+                    //     // For "top-level" blank nodes (not objects in other triples), N3.Writer typically uses []
+                    //     // if properties are contiguous and the BN isn't referenced by its explicit ID elsewhere.
+                    //     // The main use of writer.blank() is for constructing object terms, as handled above.
+                    // }
+
+                    if (addThisQuad) {
+                        writer.addQuad(subject, predicate, object, graph);
+                    }
+                }
+                rawReportTurtle = await new Promise((resolve, reject) => {
+                    writer.end((error: any, result: string) => {
+                        if (error) {
+                            reject(error);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+            } catch (e: any) {
+                this.outputChannel.appendLine(`Error serializing raw report: ${e.message}`);
+                console.error("Error serializing raw report:", e);
+                // rawReportTurtle will remain empty, button won't be shown or will be handled gracefully
+            }
+
             const webviewReport: WebviewValidationReport = {
                 conforms: report.conforms,
                 dataDocumentUri: dataDocumentUri.toString(),
                 shapesDocumentUri: shapesFileUri.toString(), // Ensure shapesFileUri is defined
-                results: report.results.map(res => ({
-                    // ... (term conversion logic remains the same)
-                    message: (
-                        res.message === null
-                            ? []
-                            : Array.isArray(res.message)
-                                ? res.message.filter(m => m !== null && typeof m === "object" && "value" in m).map(m => (m as { value: string }).value)
-                                : (typeof res.message === "object" && "value" in res.message)
+                rawReportTurtle: rawReportTurtle, // Add the raw report string
+                results: report.results.map(
+                    (res) =>
+                        ({
+                            // ... (term conversion logic remains the same)
+                            message:
+                                res.message === null
+                                    ? []
+                                    : Array.isArray(res.message)
+                                    ? res.message
+                                          .filter((m) => m !== null && typeof m === "object" && "value" in m)
+                                          .map((m) => (m as { value: string }).value)
+                                    : typeof res.message === "object" && "value" in res.message
                                     ? [(res.message as { value: string }).value]
-                                    : []
-                    ),
-                    path: this.convertTermForWebview(res.path as Term),
-                    focusNode: this.convertTermForWebview(res.focusNode as Term),
-                    severity: this.convertTermForWebview(res.severity as Term),
-                    sourceConstraintComponent: this.convertTermForWebview(res.sourceConstraintComponent as Term),
-                    sourceShape: this.convertTermForWebview(res.sourceShape as Term),
-                    value: this.convertTermForWebview(res.value as Term)
-                } as WebviewValidationResult)) // Type assertion
+                                    : [],
+                            path: this.convertTermForWebview(res.path as Term),
+                            focusNode: this.convertTermForWebview(res.focusNode as Term),
+                            severity: this.convertTermForWebview(res.severity as Term),
+                            sourceConstraintComponent: this.convertTermForWebview(
+                                res.sourceConstraintComponent as Term
+                            ),
+                            sourceShape: this.convertTermForWebview(res.sourceShape as Term),
+                            value: this.convertTermForWebview(res.value as Term),
+                        } as WebviewValidationResult)
+                ), // Type assertion
             };
 
             this.validationResultsViewProvider.showResults(webviewReport);
@@ -244,14 +354,13 @@ export class ShaclValidationService {
             }
 
             // ... (logging to output channel) ...
-
         } catch (error: any) {
             // ... (error handling, also update session report with error if sessionId provided) ...
             const errorReport: WebviewValidationReport = {
                 conforms: false,
                 results: [{ message: [`Validation process error: ${error.message}`] }],
                 dataDocumentUri: dataDocumentUri.toString(),
-                shapesDocumentUri: shapesFileUri ? shapesFileUri.toString() : "unknown"
+                shapesDocumentUri: shapesFileUri ? shapesFileUri.toString() : "unknown",
             };
             this.validationResultsViewProvider.showResults(errorReport);
             if (sessionId) {
@@ -262,14 +371,22 @@ export class ShaclValidationService {
 
     // Helper to convert N3.Term to a simpler structure for the webview
     // (Make sure this is part of the class or accessible)
-    private convertTermForWebview(term: Term | null | undefined): { value: string; termType: string; language?: string; datatype?: { value: string; termType: string } } | undefined {
-        if (!term) { return undefined; };
+    private convertTermForWebview(
+        term: Term | null | undefined
+    ):
+        | { value: string; termType: string; language?: string; datatype?: { value: string; termType: string } }
+        | undefined {
+        if (!term) {
+            return undefined;
+        }
         const base = { value: term.value, termType: term.termType };
-        if (term.termType === 'Literal') {
+        if (term.termType === "Literal") {
             return {
                 ...base,
                 language: (term as any).language || undefined, // N3.Literal has language property
-                datatype: (term as any).datatype ? { value: (term as any).datatype.value, termType: (term as any).datatype.termType } : undefined
+                datatype: (term as any).datatype
+                    ? { value: (term as any).datatype.value, termType: (term as any).datatype.termType }
+                    : undefined,
             };
         }
         return base;
@@ -292,7 +409,6 @@ export class ShaclValidationService {
     //         // Normally openTextDocument itself might trigger the manager if the file is within workspace.
     //         // Explicitly ensuring it's processed:
     //         await vscode.workspace.openTextDocument(shapesFileUri); // This will trigger RdfDocumentManager if it's a supported lang.
-
 
     //         this.outputChannel.appendLine("Loading data graph...");
     //         // const dataGraph = await loadRdfTextAsDataset(dataRdf, dataDocumentUri.fsPath); // from previous version
@@ -319,7 +435,6 @@ export class ShaclValidationService {
     //         }
     //         const dataGraph = dataContext.store;
 
-
     //         this.outputChannel.appendLine(`Data graph loaded with ${dataGraph.size} quads.`);
 
     //         this.outputChannel.appendLine("Loading shapes graph...");
@@ -342,7 +457,6 @@ export class ShaclValidationService {
     //             return;
     //         }
     //         const shapesGraph = shapesContext.store;
-
 
     //         this.outputChannel.appendLine(`Shapes graph loaded with ${shapesGraph.size} quads.`);
 
@@ -383,7 +497,6 @@ export class ShaclValidationService {
     //         } else {
     //             vscode.window.showInformationMessage("SHACL validation successful: Data conforms to shapes.");
     //         }
-
 
     //     } catch (error: any) {
     //         vscode.window.showErrorMessage(`SHACL Validation Error: ${error.message}. Check 'SHACL Validation' output.`);
@@ -431,16 +544,11 @@ export class ShaclValidationService {
         }
     }
 
-    private async promptForShapesFile(
-        dataDocumentUri: vscode.Uri
-    ): Promise<vscode.Uri | undefined> {
+    private async promptForShapesFile(dataDocumentUri: vscode.Uri): Promise<vscode.Uri | undefined> {
         try {
             const doc = await vscode.workspace.openTextDocument(dataDocumentUri);
             const text = doc.getText(
-                new vscode.Range(
-                    new vscode.Position(0, 0),
-                    new vscode.Position(Math.min(doc.lineCount, 10), 0)
-                )
+                new vscode.Range(new vscode.Position(0, 0), new vscode.Position(Math.min(doc.lineCount, 10), 0))
             ); // Check first 10 lines
             const shapesCommentRegex = /#\s*shapes:\s*([^\s<>"]+)/i; // Avoid matching IRIs in <>
             const match = text.match(shapesCommentRegex);
@@ -469,8 +577,7 @@ export class ShaclValidationService {
                             },
                         ],
                         {
-                            placeHolder:
-                                "A shapes file was detected via a comment. How do you want to proceed?",
+                            placeHolder: "A shapes file was detected via a comment. How do you want to proceed?",
                         }
                     );
                     if (choice && choice.uri) {
@@ -488,9 +595,7 @@ export class ShaclValidationService {
                 }
             }
         } catch (e: any) {
-            this.outputChannel.appendLine(
-                `Could not check for shapes comment: ${e.message}`
-            );
+            this.outputChannel.appendLine(`Could not check for shapes comment: ${e.message}`);
         }
 
         // If not found or user opts out, prompt manually

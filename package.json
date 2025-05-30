@@ -123,6 +123,18 @@
         "command": "vscode-shacl-validator.selectDataDocumentForFocusNodes",
         "title": "SHACL: Select Data Document for Focus Nodes",
         "category": "SHACL"
+      },
+      {
+        "command": "vscode-shacl-validator.replaceDataGraph",
+        "title": "SHACL: Replace Data Graph File",
+        "category": "SHACL",
+        "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "vscode-shacl-validator.replaceShapesGraph",
+        "title": "SHACL: Replace Shapes Graph File",
+        "category": "SHACL",
+        "icon": "$(file-symlink-file)"
       }
     ],
     "menus": {
@@ -156,6 +168,16 @@
           "command": "vscode-shacl-validator.deleteSession",
           "when": "view == shaclPlayground && viewItem == shaclValidationSession",
           "group": "2_modification@2"
+        },
+        {
+          "command": "vscode-shacl-validator.replaceDataGraph",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession.dataGraph",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "vscode-shacl-validator.replaceShapesGraph",
+          "when": "view == shaclPlayground && viewItem == shaclValidationSession.shapesGraph",
+          "group": "1_modification@1"
         }
       ],
       "view/title": [
